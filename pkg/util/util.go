@@ -22,6 +22,7 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/common"
 	ociloadbalancer "github.com/oracle/oci-go-sdk/v65/loadbalancer"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -222,9 +223,13 @@ func GetIngressHealthCheckPath(i *networkingv1.Ingress) string {
 	return value
 }
 
-func GetIngressHealthCheckPort(i *networkingv1.Ingress) (int, error) {
+func GetIngressHealthCheckPort(s *v1.Service, i *networkingv1.Ingress) (int, error) {
 	value, ok := i.Annotations[IngressHealthCheckPortAnnotation]
 	if !ok {
+		nodePort := s.Spec.Ports[0].NodePort
+		if nodePort != 0 {
+			return int(nodePort), nil
+		}
 		return DefaultHealthCheckPort, nil
 	}
 
@@ -373,7 +378,7 @@ func PathToServiceAndPort(ingressNamespace string, path networkingv1.HTTPIngress
 	return "", 0, fmt.Errorf("port named %s for service backend %s was not found", pSvc.Port.Name, pSvc.Name)
 }
 
-func GetHealthChecker(i *networkingv1.Ingress) (*ociloadbalancer.HealthCheckerDetails, error) {
+func GetHealthChecker(s *v1.Service, i *networkingv1.Ingress) (*ociloadbalancer.HealthCheckerDetails, error) {
 	interval, err := GetIngressHealthCheckIntervalMilliseconds(i)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing health check interval: %w", err)
@@ -389,7 +394,7 @@ func GetHealthChecker(i *networkingv1.Ingress) (*ociloadbalancer.HealthCheckerDe
 		return nil, fmt.Errorf("error parsing health check retries: %w", err)
 	}
 
-	port, err := GetIngressHealthCheckPort(i)
+	port, err := GetIngressHealthCheckPort(s, i)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing health check retries: %w", err)
 	}
@@ -439,6 +444,16 @@ func GetDefaultHeathChecker() *ociloadbalancer.HealthCheckerDetails {
 	return &ociloadbalancer.HealthCheckerDetails{
 		Protocol:         common.String(DefaultHealthCheckProtocol),
 		Port:             common.Int(DefaultHealthCheckPort),
+		TimeoutInMillis:  common.Int(DefaultHealthCheckTimeOutMilliSeconds),
+		IntervalInMillis: common.Int(DefaultHealthCheckIntervalMilliSeconds),
+		Retries:          common.Int(DefaultHealthCheckRetries),
+	}
+}
+
+func GetDefaultFlannelHealthChecker(s *v1.Service) *ociloadbalancer.HealthCheckerDetails {
+	return &ociloadbalancer.HealthCheckerDetails{
+		Protocol:         common.String(DefaultHealthCheckProtocol),
+		Port:             common.Int(int(s.Spec.Ports[0].NodePort)),
 		TimeoutInMillis:  common.Int(DefaultHealthCheckTimeOutMilliSeconds),
 		IntervalInMillis: common.Int(DefaultHealthCheckIntervalMilliSeconds),
 		Retries:          common.Int(DefaultHealthCheckRetries),

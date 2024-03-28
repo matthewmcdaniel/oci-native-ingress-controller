@@ -18,6 +18,7 @@ import (
 	"github.com/oracle/oci-native-ingress-controller/pkg/metric"
 	"github.com/oracle/oci-native-ingress-controller/pkg/util"
 	"github.com/pkg/errors"
+	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -149,6 +150,10 @@ func (s *StateStore) BuildState(ingressClass *networkingv1.IngressClass) error {
 				if err != nil {
 					return errors.Wrap(err, "error finding service and port")
 				}
+				_, _, _, svc, _ := util.PathToServiceAndTargetPort(s.ServiceLister, ing.Namespace, path)
+				if err != nil {
+					return errors.Wrap(err, "Error finding service and target port")
+				}
 
 				if annotatedListener.PortHTTP == 0 && annotatedListener.PortHTTPS == 0 {
 					allListeners.Insert(servicePort)
@@ -170,7 +175,7 @@ func (s *StateStore) BuildState(ingressClass *networkingv1.IngressClass) error {
 					}
 				}
 
-				err = validateBackendSetHealthChecker(ing, bsHealthCheckerMap, bsName)
+				err = validateBackendSetHealthChecker(svc, ing, bsHealthCheckerMap, bsName)
 				if err != nil {
 					return err
 				}
@@ -272,10 +277,10 @@ func updateBackendTlsStatus(bsTLSEnabled bool, bsTLSConfigMap map[string]TlsConf
 	}
 }
 
-func validateBackendSetHealthChecker(ingressResource *networkingv1.Ingress,
+func validateBackendSetHealthChecker(service *v1.Service, ingressResource *networkingv1.Ingress,
 	bsHealthCheckerMap map[string]*ociloadbalancer.HealthCheckerDetails, bsName string) error {
 	defaultHealthChecker := util.GetDefaultHeathChecker()
-	healthChecker, err := util.GetHealthChecker(ingressResource)
+	healthChecker, err := util.GetHealthChecker(service, ingressResource)
 	if err != nil {
 		return err
 	}
