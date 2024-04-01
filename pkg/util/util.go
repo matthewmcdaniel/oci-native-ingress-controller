@@ -55,7 +55,7 @@ const (
 
 	// IngressProtocolAnntoation - HTTP only for now
 	// HTTP, HTTP2 - accepted.
-	IngressProtocolAnnotation = "oci-native-ingress.oraclecloud.com/protocol"
+	IngressProtocolAnnotation     = "oci-native-ingress.oraclecloud.com/protocol"
 	IngressListenerPortAnnotation = "oci-native-ingress.oraclecloud.com/listener-port"
 
 	IngressPolicyAnnotation          = "oci-native-ingress.oraclecloud.com/policy"
@@ -150,25 +150,19 @@ func GetIngressProtocol(i *networkingv1.Ingress) string {
 	return strings.ToUpper(protocol)
 }
 
-func GetIngressListenerPort(i *networkingv1.Ingress) string {
-	value, ok := i.Annotations[IngressListenerPortAnnotation]
+func GetIngressListenerPort(i *networkingv1.Ingress) (int32, error) {
+	port, ok := i.Annotations[IngressListenerPortAnnotation]
 	if !ok {
-		return ""
+		return 0, nil
 	}
 
-	return strings.ToUpper(value)
-	// port, ok := i.Annotations[IngressListenerPortAnnotation]
-	// if !ok {
-	// 	return 0, nil
-	// }
-	
-	// listenerPort, err := strconv.ParseInt(port, 10, 32)
-	// if err != nil {
-	// 	return 0, err
-	// }
-	// result := int32(listenerPort)
+	listenerPort, err := strconv.ParseInt(port, 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	result := int32(listenerPort)
 
-	// return result, nil
+	return result, nil
 }
 
 func GetIngressClassLoadBalancerId(ic *networkingv1.IngressClass) string {
@@ -225,11 +219,15 @@ func GetIngressHealthCheckPath(i *networkingv1.Ingress) string {
 
 func GetIngressHealthCheckPort(s *v1.Service, i *networkingv1.Ingress) (int, error) {
 	value, ok := i.Annotations[IngressHealthCheckPortAnnotation]
-	if !ok {
-		nodePort := s.Spec.Ports[0].NodePort
-		if nodePort != 0 {
-			return int(nodePort), nil
+	nodePort := s.Spec.Ports[0].NodePort
+	serviceName := s.Name
+	if strings.ToLower(value) == "nodeport" {
+		if nodePort == 0 {
+			return 0, fmt.Errorf("Service %s is not a service of type: NodePort", serviceName)
 		}
+		return int(nodePort), nil
+	}
+	if !ok {
 		return DefaultHealthCheckPort, nil
 	}
 
@@ -444,16 +442,6 @@ func GetDefaultHeathChecker() *ociloadbalancer.HealthCheckerDetails {
 	return &ociloadbalancer.HealthCheckerDetails{
 		Protocol:         common.String(DefaultHealthCheckProtocol),
 		Port:             common.Int(DefaultHealthCheckPort),
-		TimeoutInMillis:  common.Int(DefaultHealthCheckTimeOutMilliSeconds),
-		IntervalInMillis: common.Int(DefaultHealthCheckIntervalMilliSeconds),
-		Retries:          common.Int(DefaultHealthCheckRetries),
-	}
-}
-
-func GetDefaultFlannelHealthChecker(s *v1.Service) *ociloadbalancer.HealthCheckerDetails {
-	return &ociloadbalancer.HealthCheckerDetails{
-		Protocol:         common.String(DefaultHealthCheckProtocol),
-		Port:             common.Int(int(s.Spec.Ports[0].NodePort)),
 		TimeoutInMillis:  common.Int(DefaultHealthCheckTimeOutMilliSeconds),
 		IntervalInMillis: common.Int(DefaultHealthCheckIntervalMilliSeconds),
 		Retries:          common.Int(DefaultHealthCheckRetries),
